@@ -81,21 +81,16 @@ local RDB = { MAGIC = 0xC8, --a little can go a long way
               ENOREC = 'no record found',
               EMISC  = 'miscellaneous error',
 
-              _sockerr = function(self, code)
-                if code == -2 or code == -5 then return self.ENOHOST
-                elseif code == 111 then return self.EREFUSED end
-              end,
-
               _recvuchar = function(self)
-                return struct.unpack('>B', self.sock:read(1)) or -1
+                return struct.unpack('>B', self.sock:receive(1)) or -1
               end,
 
               _recvint32 = function(self)
-                return struct.unpack('>i4', self.sock:read(4)) or -1
+                return struct.unpack('>i4', self.sock:receive(4)) or -1
               end,
 
               _recvint64 = function(self)
-                return struct.unpack('>i8', self.sock:read(8)) or -1
+                return struct.unpack('>i8', self.sock:receive(8)) or -1
               end,
 
               _packquad = function(self, num)
@@ -114,7 +109,10 @@ function RDB:new()
   local inst = {}
   setmetatable(inst, self)
   self.__index = function(t,k)
-    return rawget(RDB, k) or t:get(k)
+	local v = rawget(RDB, k)
+	if v ~= nil then return v end
+	local v , err = t:get(k)
+	if not v then error ( err ) end
   end
   self.__newindex = function(t,k,v)
     return t:put(k,v)
@@ -135,15 +133,16 @@ function RDB:open(host, port)
   host = host or "localhost"
   port = port or 1978
   local sock, ercode = socket.connect(host, port)
-  if not sock then return false, self.sockerr(ercode) end
+  if not sock then return false, ercode end
   sock:setoption('tcp-nodelay', true )
   rawset(self, 'sock', sock)
+  return true
 end
 
 ---close remote database connection
 --@return true or false, error message
 function RDB:close()
-  if not self.sock then return false, self.EINVALID end
+  if not rawget ( self , "sock" ) then return false, self.EINVALID end
   if self.sock:close() == true then
     rawset(self, 'sock', nil)
     return true
@@ -156,7 +155,7 @@ end
 --@param val  the record value (coerced to string)
 --@return  true or false, error message
 function RDB:put(key, val)
-  if not self.sock then return false, self.EINVALID end
+  if not rawget ( self , "sock" ) then return false, self.EINVALID end
   local key, val = tostring(key), tostring(val)
   local req = struct.pack('>BBi4i4', self.MAGIC, self.PUT, #key, #val)
   if not self.sock:send(req .. key .. val) then
@@ -173,7 +172,7 @@ end
 --@param val  the record value (coerced to string)
 --@return  true or false, error message
 function RDB:putkeep(key, val)
-  if not self.sock then return false, self.EINVALID end
+  if not rawget ( self , "sock" ) then return false, self.EINVALID end
   local key, val = tostring(key), tostring(val)
   local req = struct.pack('>BBi4i4', self.MAGIC, self.PUTKEEP, #key, #val)
   if not self.sock:send(req .. key .. val) then
@@ -190,7 +189,7 @@ end
 --@param val  the record value (coerced to string)
 --@return  true or false, error message
 function RDB:putcat(key, val)
-  if not self.sock then return false, self.EINVALID end
+  if not rawget ( self , "sock" ) then return false, self.EINVALID end
   local key, val = tostring(key), tostring(val)
   local req = struct.pack('>BBi4i4', self.MAGIC, self.PUTCAT, #key, #val)
   if not self.sock:send(req .. key .. val) then
@@ -209,7 +208,7 @@ end
 --@param width  the desired record length
 --@return  true or false, error message
 function RDB:putshl(key, val, width)
-  if not self.sock then return false, self.EINVALID end
+  if not rawget ( self , "sock" ) then return false, self.EINVALID end
   local key, val = tostring(key), tostring(val)
   local width = tonumber(width) or 0
   local req = struct.pack('>BBi4i4i4', self.MAGIC, self.PUTSHL, #key, #val, width)
@@ -227,7 +226,7 @@ end
 --@param val  the record value (coerced to string)
 --@return  true or false, error message
 function RDB:putnr(key, val)
-  if not self.sock then return false, self.EINVALID end
+  if not rawget ( self , "sock" ) then return false, self.EINVALID end
   local key, val = tostring(key), tostring(val)
   local req = struct.pack('>BBi4i4', self.MAGIC, self.PUTNR, #key, #val)
   if not self.sock:send(req .. key .. val) then
@@ -239,7 +238,7 @@ end
 --@param key  the record key (coerced to string)
 --@return  true or false, error message
 function RDB:out(key)
-  if not self.sock then return false, self.EINVALID end
+  if not rawget ( self , "sock" ) then return false, self.EINVALID end
   local key = tostring(key)
   local req = struct.pack('>BBi4', self.MAGIC, self.OUT, #key)
   if not self.sock:send(req .. key) then
@@ -254,7 +253,7 @@ end
 --@param key  the record key (coerced to string)
 --@return  record value or nil, error message
 function RDB:get(key)
-  if not self.sock then return false, self.EINVALID end
+  if not rawget ( self , "sock" ) then return false, self.EINVALID end
   local key = tostring(key)
   local req = struct.pack('>BBi4', self.MAGIC, self.GET, #key)
   if not self.sock:send(req .. key) then
@@ -264,7 +263,7 @@ function RDB:get(key)
   if code ~= 0 then return nil, self.ENOREC end
   local vsiz = self:_recvint32()
   if vsiz < 0 then return nil, self.ERECV end
-  local vbuf = self.sock:read(vsiz)
+  local vbuf = self.sock:receive(vsiz)
   if not vbuf then return nil, self.ERECV end
   return vbuf
 end
@@ -276,7 +275,7 @@ end
 --@param  recs an array of keys
 --@return  number of retrieved records or -1, error message
 function RDB:mget(recs)
-  if not self.sock then return -1, self.EINVALID end
+  if not rawget ( self , "sock" ) then return -1, self.EINVALID end
   if not type(recs) == 'table' then return -1, self.EINVALID end
   local req = ''
   for i, k in ipairs(recs) do
@@ -293,7 +292,7 @@ function RDB:mget(recs)
   for i = 1, rnum do
     ksiz, vsiz = self:_recvint32(), self:_recvint32()
     if ksiz < 0 or vsiz < 0 then return -1, self.ERECV end
-    kbuf, vbuf = self.sock:read(ksiz), self.sock:read(vsiz)
+    kbuf, vbuf = self.sock:receive(ksiz), self.sock:receive(vsiz)
     if not kbuf or not vbuf then return -1, self.ERECV end
     recs[kbuf] = vbuf
   end
@@ -304,7 +303,7 @@ end
 --@param key  the record key (coerced to string)
 --@return  size or -1, error message
 function RDB:vsiz(key)
-  if not self.sock then return -1, self.EINVALID end
+  if not rawget ( self , "sock" ) then return -1, self.EINVALID end
   local key = tostring(key)
   local req = struct.pack('>BBi4', self.MAGIC, self.VSIZ, #key)
   if not self.sock:send(req .. key) then
@@ -318,7 +317,7 @@ end
 ---initialize the iterator (used to access the key of every record)
 --@return  true or false, error code
 function RDB:iterinit()
-  if not self.sock then return false, self.EINVALID end
+  if not rawget ( self , "sock" ) then return false, self.EINVALID end
   local req = struct.pack('>BB', self.MAGIC, self.ITERINIT)
   if not self.sock:send(req) then return false, self.ESEND end
   local code = self:_recvuchar()
@@ -332,7 +331,7 @@ end
 --[[ It is possible to access every record by iteration of calling this method. It is allowed to update or remove records whose keys are fetched while the iteration. However, it is not assured if updating the database is occurred while the iteration. Besides, the order of this traversal access method is arbitrary, so it is not assured that the order of storing matches the one of the traversal access. ]]--
 --@return  next key or nil, error message
 function RDB:iternext()
-  if not self.sock then return nil, self.EINVALID end
+  if not rawget ( self , "sock" ) then return nil, self.EINVALID end
   local req = struct.pack('>BB', self.MAGIC, self.ITERNEXT)
   if not self.sock:send(req) then return nil, self.ESEND end
   local code = self:_recvuchar()
@@ -340,7 +339,7 @@ function RDB:iternext()
   if code ~= 0 then return nil, self.ENOREC end
   local vsiz = self:_recvint32()
   if vsiz < 0 then return nil, self.ERECV end
-  local vbuf = self.sock:read(vsiz)
+  local vbuf = self.sock:receive(vsiz)
   if not vbuf then return nil, self.ERECV end
   return vbuf
 end
@@ -351,7 +350,7 @@ end
 --@param max  max number of keys to fetch
 --@return  array of keys of corresponding records or {}, error message
 function RDB:fwmkeys(prefix, max)
-  if not self.sock then return {}, self.EINVALID end
+  if not rawget ( self , "sock" ) then return {}, self.EINVALID end
   prefix = tostring(prefix)
   max = max or -1
   local req = struct.pack('>BBi4i4', self.MAGIC, self.FWMKEYS, #prefix, max)
@@ -366,7 +365,7 @@ function RDB:fwmkeys(prefix, max)
   for i = 1,knum do
     ksiz = self:_recvint32()
     if ksiz < 0 then return {}, self.ERECV end
-    kbuf = self.sock:read(ksiz)
+    kbuf = self.sock:receive(ksiz)
     if not kbuf then return {}, self.ERECV end
     keys[#keys+1] = kbuf
   end
@@ -381,7 +380,7 @@ end
 --@param num  the additional value. (defaults to 0)
 --@return  sum or nil, error message
 function RDB:addint(key, num)
-  if not self.sock then return nil, self.EINVALID end
+  if not rawget ( self , "sock" ) then return nil, self.EINVALID end
   local key = tostring(key)
   local num = tonumber(num) or 0
   local req = struct.pack('>BBi4i4', self.MAGIC, self.ADDINT, #key, num)
@@ -401,7 +400,7 @@ end
 --@return  sum or nil, error message
 function RDB:adddouble(key, num)
   --XXX  I doubt that this is correct
-  if not self.sock then return nil, self.EINVALID end
+  if not rawget ( self , "sock" ) then return nil, self.EINVALID end
   local key = tostring(key)
   local num = tonumber(num) or 0
   local integ = math.floor(num)
@@ -424,7 +423,7 @@ end
 --option RDB.XOLCKGLB = global locking
 --@return  response or nil, error message
 function RDB:ext(name, key, val, opts)
-  if not self.sock then return nil, self.EINVALID end
+  if not rawget ( self , "sock" ) then return nil, self.EINVALID end
   local name = tostring(name)
   local key = tostring(key) or ""
   local val = tostring(val) or ""
@@ -437,7 +436,7 @@ function RDB:ext(name, key, val, opts)
   if code ~= 0 then return nil, self.EMISC end
   local vsiz = self:_recvint32()
   if vsiz < 0 then return nil, self.ERECV end
-  local vbuf = self.sock:read(vsiz)
+  local vbuf = self.sock:receive(vsiz)
   if not vbuf then return nil, ERECV end
   return vbuf
 end
@@ -445,7 +444,7 @@ end
 ---synchronize updated contents with the file and device
 --@return  true or false, error message
 function RDB:sync()
-  if not self.sock then return false, self.EINVALID end
+  if not rawget ( self , "sock" ) then return false, self.EINVALID end
   local req = struct.pack('>BB', self.MAGIC, self.SYNC)
   if not self.sock:send(req) then return false, self.ESEND end
   local code = self:_recvuchar()
@@ -457,7 +456,7 @@ end
 ---optimize storage according to provided tuning params
 --@return  true or false, error message
 function RDB:optimize(params)
-  if not self.sock then return false, self.EINVALID end
+  if not rawget ( self , "sock" ) then return false, self.EINVALID end
   local params = tostring(params) or ''
   local req = struct.pack('>BBi4', self.MAGIC, self.OPTIMIZE, #params)
   if not self.sock:send(req) then return false, self.ESEND end
@@ -470,7 +469,7 @@ end
 ---remove all records
 --@return  true or false, error message
 function RDB:vanish()
-  if not self.sock then return false, self.EINVALID end
+  if not rawget ( self , "sock" ) then return false, self.EINVALID end
   if not self.sock:send( struct.pack('>BB', self.MAGIC, self.VANISH) ) then
     return false, self.ESEND end
   local code = self:_recvuchar()
@@ -485,7 +484,7 @@ end
 --if path begins with '@' then trailing substring is executed as command line
 --@return  true or false, error message
 function RDB:copy(path)
-  if not self.sock then return false, self.EINVALID end
+  if not rawget ( self , "sock" ) then return false, self.EINVALID end
   if not path then return false, self.EINVALID end
   local path = tostring(path)
   local req = struct.pack('>BBi4', self.MAGIC, self.COPY, #path)
@@ -503,7 +502,7 @@ end
 --( limited to Lua's number type precision )
 --@return  record number or 0, error message
 function RDB:rnum()
-  if not self.sock then return 0, self.EINVALID end
+  if not rawget ( self , "sock" ) then return 0, self.EINVALID end
   if not self.sock:send( struct.pack('>BB', self.MAGIC, self.RNUM) ) then
     return 0, self.ESEND end
   local code = self:_recvuchar()
@@ -518,7 +517,7 @@ end
 --( limited to Lua's number type precision )
 --@return  record size or 0, error message
 function RDB:size()
-  if not self.sock then return 0, self.EINVALID end
+  if not rawget ( self , "sock" ) then return 0, self.EINVALID end
   if not self.sock:send( struct.pack('>BB', self.MAGIC, self.SIZE) ) then
     return 0, self.ESEND end
   local code = self:_recvuchar()
@@ -533,7 +532,7 @@ end
 --( string is in 'tab separated values' format )
 --@return  status string or nil, error message
 function RDB:stat()
-  if not self.sock then return nil, self.EINVALID end
+  if not rawget ( self , "sock" ) then return nil, self.EINVALID end
   if not self.sock:send( struct.pack('>BB', self.MAGIC, self.STAT) ) then
     return nil, self.ESEND end
   local code = self:_recvuchar()
@@ -541,7 +540,7 @@ function RDB:stat()
   if code ~= 0 then return nil, self.EMISC end
   local ssiz = self:_recvint32()
   if ssiz < 0 then return nil, self.ERECV end
-  return self.sock:read(ssiz) or nil, self.ERECV
+  return self.sock:receive(ssiz) or nil, self.ERECV
 end
 
 ---call a versatile function for miscellaneous operations
@@ -551,7 +550,7 @@ end
 --@param opts  a bitmask containing options
 --@return  array of results or nil, error message
 function RDB:misc(name, args, opts)
-  if not self.sock then return nil, self.EINVALID end
+  if not rawget ( self , "sock" ) then return nil, self.EINVALID end
   local name = tostring(name)
   local args = args or {}
   local opts = opts or 0
@@ -570,7 +569,7 @@ function RDB:misc(name, args, opts)
   for i=1, rnum do
     esiz = self:_recvint32()
     if esiz < 0 then return nil, self.ERECV end
-    ebuf = self.sock:read(esiz)
+    ebuf = self.sock:receive(esiz)
     if not ebuf then return nil, self.ERECV end
     res[#res+1] = ebuf
   end
