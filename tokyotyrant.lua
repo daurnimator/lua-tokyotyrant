@@ -143,10 +143,9 @@ end
 --@return true or false, error message
 function RDB:close()
   if not rawget ( self , "sock" ) then return false, self.EINVALID end
-  if self.sock:close() == true then
-    rawset(self, 'sock', nil)
-    return true
-  else return false, self.EMISC end
+  self.sock:close()
+  rawset(self, 'sock', nil)
+  return true
 end
 
 ---store a record
