@@ -1,9 +1,8 @@
 
-
 tokyotyrant.lua
 
 Depends on
-  - nixio  (for sockets and bitwise operations)
+  - luasocket
   - Roberto Ierusalimschy's struct module
   - A tokyotyrant server to connect to
 ( Batteries not included )
