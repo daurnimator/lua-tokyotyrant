@@ -130,7 +130,7 @@ setmetatable(RDB, {__call = RDB.new})
 --@return  true or false, error message
 function RDB:open(host, port)
   --TODO support UNIX domain sockets
-  if rawget(self, sock) then return false, self.EINVALID end
+  if rawget(self, 'sock') then return false, self.EINVALID end
   if self == RDB then return false, self.EINVALID end
   host = host or "localhost"
   port = port or 1978
@@ -145,7 +145,7 @@ end
 function RDB:close()
   if not self.sock then return false, self.EINVALID end
   if self.sock:close() == true then
-    rawset(sock, nil)
+    rawset(self, 'sock', nil)
     return true
   else return false, self.EMISC end
 end
@@ -161,7 +161,7 @@ function RDB:put(key, val)
   local req = struct.pack('>BBi4i4', self.MAGIC, self.PUT, #key, #val)
   if not self.sock:send(req .. key .. val) then
     return false, self.ESEND end
-  local code = self:_recvcode()
+  local code = self:_recvuchar()
   if code == -1 then return false, self.ERECV end
   if code ~= 0 then return false, self.EMISC end
   return true
@@ -178,7 +178,7 @@ function RDB:putkeep(key, val)
   local req = struct.pack('>BBi4i4', self.MAGIC, self.PUTKEEP, #key, #val)
   if not self.sock:send(req .. key .. val) then
     return false, self.ESEND end
-  local code = self:_recvcode()
+  local code = self:_recvuchar()
   if code == -1 then return false, self.ERECV end
   if code ~= 0 then return false, self.EKEEP end
   return true
@@ -195,7 +195,7 @@ function RDB:putcat(key, val)
   local req = struct.pack('>BBi4i4', self.MAGIC, self.PUTCAT, #key, #val)
   if not self.sock:send(req .. key .. val) then
     return false, self.ESEND end
-  local code = self:_recvcode()
+  local code = self:_recvuchar()
   if code == -1 then return false, self.ERECV end
   if code ~= 0 then return false, self.EMISC end
   return true
@@ -215,7 +215,7 @@ function RDB:putshl(key, val, width)
   local req = struct.pack('>BBi4i4i4', self.MAGIC, self.PUTSHL, #key, #val, width)
   if not self.sock:send(req .. key .. val) then
     return false, self.ESEND end
-  local code = self:_recvcode()
+  local code = self:_recvuchar()
   if code == -1 then return false, self.ERECV end
   if code ~= 0 then return false, self.EMISC end
   return true
@@ -244,7 +244,7 @@ function RDB:out(key)
   local req = struct.pack('>BBi4', self.MAGIC, self.OUT, #key)
   if not self.sock:send(req .. key) then
     return false, self.ESEND end
-  local code = self:_recvcode()
+  local code = self:_recvuchar()
   if code == -1 then return false, self.ERECV end
   if code ~= 0 then return false, self.ENOREC end
   return true
@@ -259,7 +259,7 @@ function RDB:get(key)
   local req = struct.pack('>BBi4', self.MAGIC, self.GET, #key)
   if not self.sock:send(req .. key) then
     return false, self.ESEND end
-  local code = self:_recvcode()
+  local code = self:_recvuchar()
   if code == -1 then return nil, self.ERECV end
   if code ~= 0 then return nil, self.ENOREC end
   local vsiz = self:_recvint32()
@@ -284,7 +284,7 @@ function RDB:mget(recs)
   end
   req = struct.pack('>BBi4', self.MAGIC, self.MGET, #recs) .. req
   if not self.sock:send(req) then return -1, self.ESEND end
-  local code = self:_recvcode()
+  local code = self:_recvuchar()
   if code == -1 then return -1, self.ERECV end
   if code ~= 0 then return -1, self.ENOREC end
   local rnum = self:_recvint32()
@@ -309,7 +309,7 @@ function RDB:vsiz(key)
   local req = struct.pack('>BBi4', self.MAGIC, self.VSIZ, #key)
   if not self.sock:send(req .. key) then
     return false, self.ESEND end
-  local code = self:_recvcode()
+  local code = self:_recvuchar()
   if code == -1 then return -1, self.ERECV end
   if code ~= 0 then return -1, self.ENOREC end
   return self:_recvint32()
@@ -321,7 +321,7 @@ function RDB:iterinit()
   if not self.sock then return false, self.EINVALID end
   local req = struct.pack('>BB', self.MAGIC, self.ITERINIT)
   if not self.sock:send(req) then return false, self.ESEND end
-  local code = self:_recvcode()
+  local code = self:_recvuchar()
   if code == -1 then return false, self.ERECV end
   if code ~= 0 then return false, self.EMISC end
   return true
@@ -335,7 +335,7 @@ function RDB:iternext()
   if not self.sock then return nil, self.EINVALID end
   local req = struct.pack('>BB', self.MAGIC, self.ITERNEXT)
   if not self.sock:send(req) then return nil, self.ESEND end
-  local code = self:_recvcode()
+  local code = self:_recvuchar()
   if code == -1 then return nil, self.ERECV end
   if code ~= 0 then return nil, self.ENOREC end
   local vsiz = self:_recvint32()
@@ -356,7 +356,7 @@ function RDB:fwmkeys(prefix, max)
   max = max or -1
   local req = struct.pack('>BBi4i4', self.MAGIC, self.FWMKEYS, #prefix, max)
   if not self.sock:send(req .. prefix) then return {}, self.ESEND end
-  local code = self:_recvcode()
+  local code = self:_recvuchar()
   if code == -1 then return {}, self.ERECV end
   if code ~= 0 then return {}, self.ENOREC end
   local knum = self:_recvint32()
@@ -386,7 +386,7 @@ function RDB:addint(key, num)
   local num = tonumber(num) or 0
   local req = struct.pack('>BBi4i4', self.MAGIC, self.ADDINT, #key, num)
   if not self.sock:send(req .. key) then return nil, self.ESEND end
-  local code = self:_recvcode()
+  local code = self:_recvuchar()
   if code == -1 then return nil, self.ERECV end
   if code ~= 0 then return nil, self.EKEEP end
   return self:_recvint32()
@@ -409,7 +409,7 @@ function RDB:adddouble(key, num)
   local req = struct.pack('>BBi4', self.MAGIC, self.ADDOUBLE, #key)
   req = req + self:_packquad(integ) + self:_packquad(fract) + key
   if not self.sock:send(req) then return nil, self.ESEND end
-  local code = self:_recvcode()
+  local code = self:_recvuchar()
   if code == -1 then return nil, self.ERECV end
   if code ~= 0 then return nil, self.EKEEP end
   return (self:_recvint32() + self:_recvint32()) / 1000000000000.0
@@ -432,7 +432,7 @@ function RDB:ext(name, key, val, opts)
   local req = struct.pack('>BBi4i4i4i4', self.MAGIC, self.EXT,
                                      #name, opts, #key, #val)
   if not self.sock:send(req .. name) then return nil, self.ESEND end
-  local code = self:_recvcode()
+  local code = self:_recvuchar()
   if code == -1 then return nil, self.ERECV end
   if code ~= 0 then return nil, self.EMISC end
   local vsiz = self:_recvint32()
@@ -447,8 +447,8 @@ end
 function RDB:sync()
   if not self.sock then return false, self.EINVALID end
   local req = struct.pack('>BB', self.MAGIC, self.SYNC)
-  if not self.sock:writeall(req) then return false, self.ESEND end
-  local code = self:_recvcode()
+  if not self.sock:send(req) then return false, self.ESEND end
+  local code = self:_recvuchar()
   if code == -1 then return false, self.ERECV end
   if code ~= 0 then return false, self.EMISC end
   return true
@@ -460,8 +460,8 @@ function RDB:optimize(params)
   if not self.sock then return false, self.EINVALID end
   local params = tostring(params) or ''
   local req = struct.pack('>BBi4', self.MAGIC, self.OPTIMIZE, #params)
-  if not self.sock:writeall(req) then return false, self.ESEND end
-  local code = self:_recvcode()
+  if not self.sock:send(req) then return false, self.ESEND end
+  local code = self:_recvuchar()
   if code == -1 then return false, self.ERECV end
   if code ~= 0 then return false, self.EMISC end
   return true
@@ -473,7 +473,7 @@ function RDB:vanish()
   if not self.sock then return false, self.EINVALID end
   if not self.sock:send( struct.pack('>BB', self.MAGIC, self.VANISH) ) then
     return false, self.ESEND end
-  local code = self:_recvcode()
+  local code = self:_recvuchar()
   if code == -1 then return false, self.ERECV end
   if code ~= 0 then return false, self.EMISC end
   return true
@@ -490,11 +490,14 @@ function RDB:copy(path)
   local path = tostring(path)
   local req = struct.pack('>BBi4', self.MAGIC, self.COPY, #path)
   if not self.sock:send(req .. path) then return false, self.ESEND end
-  local code = self:_recvcode()
+  local code = self:_recvuchar()
   if code == -1 then return false, self.ERECV end
   if code ~= 0 then return false, self.EMISC end
   return true
 end
+
+-- TODO: Missing protocol function "restore" for the function `tcrdbrestore'
+-- TODO: Missing protocol function "setmst" for the function `tcrdbsetmst'
 
 ---get number of records
 --( limited to Lua's number type precision )
@@ -503,7 +506,7 @@ function RDB:rnum()
   if not self.sock then return 0, self.EINVALID end
   if not self.sock:send( struct.pack('>BB', self.MAGIC, self.RNUM) ) then
     return 0, self.ESEND end
-  local code = self:_recvcode()
+  local code = self:_recvuchar()
   if code == -1 then return 0, self.ERECV end
   if code ~= 0 then return 0, self.EMISC end
   local rv = self:_recvint64()
@@ -518,7 +521,7 @@ function RDB:size()
   if not self.sock then return 0, self.EINVALID end
   if not self.sock:send( struct.pack('>BB', self.MAGIC, self.SIZE) ) then
     return 0, self.ESEND end
-  local code = self:_recvcode()
+  local code = self:_recvuchar()
   if code == -1 then return 0, self.ERECV end
   if code ~= 0 then return 0, self.EMISC end
   local rv = self:_recvint64()
@@ -533,7 +536,7 @@ function RDB:stat()
   if not self.sock then return nil, self.EINVALID end
   if not self.sock:send( struct.pack('>BB', self.MAGIC, self.STAT) ) then
     return nil, self.ESEND end
-  local code = self:_recvcode()
+  local code = self:_recvuchar()
   if code == -1 then return nil, self.ERECV end
   if code ~= 0 then return nil, self.EMISC end
   local ssiz = self:_recvint32()
@@ -559,7 +562,7 @@ function RDB:misc(name, args, opts)
     req = req .. struct.pack('>i4', #arg) .. arg
   end
   if not self.sock:send(req) then return nil, self.ESEND end
-  local code = self:_recvcode()
+  local code = self:_recvuchar()
   if code == -1 then return nil, self.ERECV end
   if code ~= 0 then return nil, self.EMISC end
   local rnum = self:_recvint32()
@@ -691,7 +694,7 @@ function RDBTBL:put(pkey, cols)
   local pkey = tostring(pkey)
   if type(cols) ~= 'table' then error("'cols' must be a table of columns") end
   local args = {}
-  for k,v in cols do
+  for k, v in pairs(cols) do
     args[#args+1] = k
     args[#args+1] = v
   end
@@ -708,7 +711,7 @@ function RDBTBL:putkeep(pkey, cols)
   local pkey = tostring(pkey)
   if type(cols) ~= 'table' then error("'cols' must be a table of columns") end
   local args = {}
-  for k,v in cols do
+  for k, v in pairs(cols) do
     args[#args+1] = k
     args[#args+1] = v
   end
@@ -725,7 +728,7 @@ function RDBTBL:putcat(pkey, cols)
   local pkey = tostring(pkey)
   if type(cols) ~= 'table' then error("'cols' must be a table of columns") end
   local args = {}
-  for k,v in cols do
+  for k, v in pairs(cols) do
     args[#args+1] = k
     args[#args+1] = v
   end
@@ -749,8 +752,7 @@ end
 --@param pkey  the primary key
 --@return  a table of columns
 function RDBTBL:get(pkey)
-  local pkey = tostring(pkey)
-  local args = { pkey }
+  local args = { tostring(pkey) }
   local res, err = self:misc('get', args)
   if not res then return nil, self.ENOREC end
   local cols = {}
@@ -770,7 +772,7 @@ end
 function RDBTBL:mget(recs)
   local res, err = RDB.mget(self, recs)
   if res == -1 then return -1, err end
-  for k,v in recs do
+  for k,v in pairs(res) do
     local cols = {}
     local func, str = strsplit(v, '\%z')
     while true do
@@ -943,7 +945,7 @@ function RDBQRY:searchget(names)
   else args[1] = "get" end
   local res, err = self.rdb:misc('search', args, RDB.MONOULOG)
   if not res then return {}, err end
-  for i,v in res do
+  for i, v in pairs(res) do
     local cols = {}
     local func, str = strsplit(v, '\%z')
     while true do
