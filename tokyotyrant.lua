@@ -35,6 +35,7 @@ local tblconcat = table.concat
 
 local struct = require 'struct'
 local socket = require "socket"
+pcall ( require , "socket.unix" )
 
 local function module(name) end --trick luadoc
 module 'tokyotyrant'
@@ -119,21 +120,42 @@ end
 
 setmetatable(RDB, {__call = RDB.new})
 
----open a remote database connection
+
+function RDB:attach ( sock )
+  if rawget(self, 'sock') then return false, self.EINVALID end
+  if self == RDB then return false, self.EINVALID end
+  
+  rawset(self, 'sock', sock)
+  return true
+end
+
+---open a tcp remote database connection
 --@param host  the host string. (defaults to localhost)
 --@param port  the port number (number or string) (defaults to '1978')
 --@return  true or false, error message
-function RDB:open(host, port)
-  --TODO support UNIX domain sockets
-  if rawget(self, 'sock') then return false, self.EINVALID end
-  if self == RDB then return false, self.EINVALID end
+function RDB:open ( host , port )
   host = host or "localhost"
   port = port or 1978
+  
   local sock, ercode = socket.connect(host, port)
   if not sock then return false, ercode end
   sock:setoption('tcp-nodelay', true )
-  rawset(self, 'sock', sock)
-  return true
+  
+  return self:attach ( sock )
+end
+
+---open a unix domain socket based remote database connection
+--@param path  the path to the unix domain socket.
+--@return  true or false, error message
+function RDB:openunix ( path )
+  if type ( path ) ~= "string" then return false, self.EINVALID end
+  
+  local sock = socket.unix ( )
+  if not sock then return false, "Unix sockets not available" end
+  local ok , err = sock:connect(path)
+  if not ok then return false, err end
+  
+  return self:attach ( sock )
 end
 
 ---close remote database connection
