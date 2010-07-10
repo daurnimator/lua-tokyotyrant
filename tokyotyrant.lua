@@ -120,16 +120,19 @@ end
 
 setmetatable(RDB, {__call = RDB.new})
 
-
+---attach a socket to a database instance
+--called automatically from rdb.open* functions
+--@param sock  the socket to attach
+--@return  true or false, error message
 function RDB:attach ( sock )
-  if rawget(self, 'sock') then return false, self.EINVALID end
-  if self == RDB then return false, self.EINVALID end
+  if rawget ( self , 'sock' ) then return false , self.EINVALID end -- Already has a socket attached.
+  if self == RDB then return false , self.EINVALID end -- Method called from main library, not an instance
   
-  rawset(self, 'sock', sock)
+  rawset ( self , 'sock' , sock )
   return true
 end
 
----open a tcp remote database connection
+---open a tcp remote database connection and attach it to an instance
 --@param host  the host string. (defaults to localhost)
 --@param port  the port number (number or string) (defaults to '1978')
 --@return  true or false, error message
@@ -144,7 +147,8 @@ function RDB:open ( host , port )
   return self:attach ( sock )
 end
 
----open a unix domain socket based remote database connection
+---open a unix domain socket based remote database connection and attach it to an instance
+--will fail if lua socket does not have unix extensions installed
 --@param path  the path to the unix domain socket.
 --@return  true or false, error message
 function RDB:openunix ( path )
