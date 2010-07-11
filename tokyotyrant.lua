@@ -297,6 +297,7 @@ function rdb:get ( key )
 	assert ( sock:send ( req ) )
 	
 	local code = assert ( recvuchar ( sock ) )
+	
 	if code ~= 0 then return false end
 	
 	local vsiz = assert ( recvint32 ( sock ) )
@@ -324,16 +325,16 @@ function rdb:mget ( recs )
 	assert ( sock:send ( req ) )
 	
 	local code = assert ( recvuchar ( sock ) )
-	if code ~= 0 then return false end
-	
-	local res = { }
 	local rnum = assert ( recvint32 ( sock ) )
+	local res = { }
 	for i = 1 , rnum do
 		local ksiz , vsiz = assert ( recvint32 ( sock ) ) , assert ( recvint32 ( sock ) )
 		local kbuf , vbuf = assert ( sock:receive ( ksiz ) ) , assert ( sock:receive ( vsiz ) )
 		res [ i ] = vbuf
 		res [ kbuf ] = vbuf
 	end
+	
+	if code ~= 0 then return false end
 	return res
 end
 
@@ -350,6 +351,7 @@ function rdb:vsiz ( key )
 	assert ( sock:send ( req ) )
 
 	local code = assert ( recvuchar ( sock ) )
+	
 	if code ~= 0 then return false end
 
 	local vsiz = assert ( recvint32 ( sock ) )
@@ -381,6 +383,7 @@ function rdb:iternext ( )
 	assert ( sock:send ( req ) )
 
 	local code = assert ( recvuchar ( sock ) )
+	
 	if code ~= 0 then return false end
 
 	local ksiz = assert ( recvint32 ( sock ) )
@@ -404,8 +407,6 @@ function rdb:fwmkeys ( prefix , max )
 	assert ( sock:send ( req ) )
 
 	local code = assert ( recvuchar ( sock ) )
-	if code ~= 0 then return false end
-
 	local knum = assert ( recvint32 ( sock ) )
 	local res = { }
 	for i = 1 , knum do
@@ -413,6 +414,8 @@ function rdb:fwmkeys ( prefix , max )
 		local kbuf = assert ( sock:receive ( ksiz ) )
 		res [ #res + 1 ] = kbuf
 	end
+
+	if code ~= 0 then return false end
 	return res
 end
 
@@ -434,6 +437,7 @@ function rdb:addint ( key , num )
 	assert ( sock:send ( req ) )
 	
 	local code = assert ( recvuchar ( sock ) )
+	
 	if code ~= 0 then return false end
 	
 	local sum = assert ( recvint32 ( sock ) )
@@ -461,6 +465,7 @@ function rdb:adddouble ( key , num )
 	assert ( sock:send ( req ) )
 	
 	local code = assert ( recvuchar ( sock ) )
+	
 	if code ~= 0 then return false end
 	
 	local sum = assert ( recvint64 ( sock ) ) + assert ( recvint64 ( sock ) ) * 1e-12
@@ -494,6 +499,7 @@ function rdb:ext ( name , key , val , opts )
 	assert ( sock:send ( req ) )
 	
 	local code = assert ( recvuchar ( sock ) )
+	
 	if code ~= 0 then return false end
 	
 	local rsiz = assert ( recvint32 ( sock ) )
@@ -625,9 +631,9 @@ function rdb:rnum ( )
   	assert ( sock:send ( req ) )
 	
 	local code = assert ( recvuchar ( sock ) )
-	if code ~= 0 then return false end
-	
 	local rnum = assert ( recvint64 ( sock ) )
+	
+	if code ~= 0 then return false end
 	return rnum
 end
 mt.__len = rdb.rnum
@@ -643,9 +649,9 @@ function rdb:size ( )
   	assert ( sock:send ( req ) )
 	
 	local code = assert ( recvuchar ( sock ) )
-	if code ~= 0 then return false end
-	
 	local rnum = assert ( recvint64 ( sock ) )
+	
+	if code ~= 0 then return false end
 	return rnum
 end
 
@@ -660,10 +666,11 @@ function rdb:stat ( )
 	assert ( sock:send ( req ) )
 	
 	local code = assert ( recvuchar ( sock ) )
-	if code ~= 0 then return false end
-	
 	local ssiz = assert ( recvint32 ( sock ) )
 	local sbuf = assert ( sock:receive ( ssiz ) )
+	
+	if code ~= 0 then return false end
+	
 	local res = { }
 	for key , value in sbuf:gmatch ( "([^\t]*)\t([^\n]*)\n" ) do
 		res [ key ] = value
@@ -689,7 +696,7 @@ function rdb:misc ( name , args , opts )
 	
 	name = assert ( tostring ( name ) , "Invalid name" )
 	args = args or { }
-	args = assert ( type ( args ) == "table" )
+	assert ( type ( args ) == "table" )
 	if not opts or opts == "none" then
 		opts = 0
 	elseif opts == "noupdatelog" then
@@ -700,15 +707,14 @@ function rdb:misc ( name , args , opts )
 	
 	local req = { struct.pack ( ">BBi4i4i4c0" , constants.MAGIC , constants.MISC , #name , opts , #args , name ) }
 	for i, arg in ipairs ( args ) do
+		assert ( type ( arg ) == "string" )
 		req [ i + 1 ] = struct.pack ( ">i4c0" , #arg , arg )
 	end
 	req = tblconcat ( req )
-  
+	
 	assert ( sock:send ( req ) )
 	
 	local code = assert ( recvuchar ( sock ) )
-	if code ~= 0 then return false end
-	
 	local rnum = assert ( recvint32 ( sock ) )
 	local res = {}
 	for i = 1 , rnum do
@@ -716,6 +722,8 @@ function rdb:misc ( name , args , opts )
 		local ebuf = assert ( sock:receive ( esiz ) )
 		res [ i ] = ebuf
 	end
+	
+	if code ~= 0 then return false end
 	return res
 end
 
@@ -763,6 +771,7 @@ function tbldb:put ( pkey , cols )
 		args [ nexti + 1 ] = v
 		nexti = nexti + 2
 	end
+	
 	return not not self:misc ( "put" , args )
 end
 
