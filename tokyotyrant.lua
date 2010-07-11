@@ -716,7 +716,7 @@ function rdb:misc ( name , args , opts )
 	
 	local code = assert ( recvuchar ( sock ) )
 	local rnum = assert ( recvint32 ( sock ) )
-	local res = {}
+	local res = { }
 	for i = 1 , rnum do
 		local esiz = assert ( recvint32 ( sock ) )
 		local ebuf = assert ( sock:receive ( esiz ) )
@@ -765,7 +765,7 @@ function tbldb:put ( pkey , cols )
 	pkey = assert ( tostring ( pkey ) , "Invalid primary key" )
 	assert ( type ( cols ) == 'table' , "'cols' must be a table of columns" )
 	
-	local args , nexti = { } , 1
+	local args , nexti = { pkey } , 2
 	for k , v in pairs ( cols ) do
 		args [ nexti ] = k
 		args [ nexti + 1 ] = v
