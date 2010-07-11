@@ -41,6 +41,8 @@ pcall ( require , "socket.unix" )
 local function module(name) end --trick luadoc
 module 'tokyotyrant'
 
+local classmt = { __call = function ( t , ... ) return t.new ( ... ) end }
+
 local constants = { 
 	MAGIC = 0xC8 ; --a little can go a long way
 
@@ -94,7 +96,7 @@ local recvint64 = function ( sock )
 	return struct.unpack ( '>i8' , r )
 end
 
-local rdb = { }
+local rdb = setmetatable  ( { } , classmt )
 local mt = {
 	__index = function ( t , k )
 		local v = rawget ( rdb , k )
@@ -482,7 +484,7 @@ function rdb:ext ( name , key , val , opts )
 	local sock = rawget ( self , "sock" )
 	assert ( sock , "No socket attached" )
 	
-	name = assert ( tostring ( name ) , "Invalid name" )
+	name = assert ( tostring ( name ) , "Invalid column name" )
 	key = assert ( tostring ( key ) , "Invalid key" )
 	val = assert ( tostring ( val ) , "Invalid value" )
 	if not opts or opts == "none" then
@@ -694,7 +696,7 @@ function rdb:misc ( name , args , opts )
 	local sock = rawget ( self , "sock" )
 	assert ( sock , "No socket attached" )
 	
-	name = assert ( tostring ( name ) , "Invalid name" )
+	name = assert ( tostring ( name ) , "Invalid column name" )
 	args = args or { }
 	assert ( type ( args ) == "table" )
 	if not opts or opts == "none" then
@@ -744,7 +746,7 @@ function rdb:pairs ( )
 end
 mt.__pairs = rdb.pairs
 
-local tbldb = { }
+local tbldb = setmetatable  ( { } , classmt )
 local tbldbmt = {
 	__index = function ( t , k )
 		return tbldb [ k ] or rdb [ k ]
@@ -752,7 +754,7 @@ local tbldbmt = {
 }
 ---initialize a new Remote Table Database Object
 --@return  new RDBTBL Object
-function tbldb:new ( )
+function tbldb.new ( )
 	return setmetatable ( { } , tbldbmt )
 end
 
@@ -877,7 +879,7 @@ local indextypes = {
 --@param itype  the index type: "lexical" , "decimal" , "token" , "qgram" , "opt" , "void" or "keep"
 --@return  true or false
 function tbldb:setindex ( name , itype )
-	name = assert ( tostring ( name ) , "Invalid name" )
+	name = assert ( tostring ( name ) , "Invalid column name" )
 	itype = assert ( type ( itype ) == "string" and indextypes [ itype:upper ( ) ] , "Invalid index type" )
 	
 	return not not self:misc ( "setindex" , { name , tostring ( itype ) } )
@@ -890,123 +892,105 @@ function tbldb:genuid ( )
 	return res [ 1 ]
 end
 
---- Remote Database Query Object
---( helper class for RDBTBL )--
-local RDBQRY = {
-	--query conditions:
-	QCSTREQ = 0,   --string is equal to
-	QCSTRINC = 1,  --string is included in
-	QCSTRBW = 2,   --string begins with
-	QCSTREW = 3,   --string ends with
-	QCSTRAND = 4,  --string includes all tokens in
-	QCSTROR = 5,   --string includes at least one token in
-	QCSTROREQ = 6, --string is equal to at least one token in
-	QCSTRRX = 7,   --string matches regular expressions of
-	QCNUMEQ = 8,   --number is equal to
-	QCNUMGT = 9,   --number is greater than
-	QCNUMGE = 10,  --number is greater than or equal to
-	QCNUMLT = 11,  --number is less than
-	QCNUMLE = 12,  --number is less than or equal to
-	QCNUMBT = 13,  --number is between two tokens of
-	QCNUMOREQ = 14,--number is equal to at least one token in
-	QCFTSPH = 15,  --full-text search with the phrase of
-	QCFTSAND = 16, --full-text search with all tokens in
-	QCFTSOR = 17,  --full-text search with at least one token in
-	QCFTSEX = 18,  --f-text search with the compound expression of
-	QCNEGATE = 2^(24-1), --negation flag
-	QCNOIDX = 2^(25-1),  --no index flag
-	--order types:
-	QOSTRASC = 0, --string ascending
-	QOSTRDESC = 1,--string descending
-	QONUMASC = 2, --number ascending
-	QONUMDESC = 3,--number descending
-}
+---execute a search
+--@param query  a query object
+--@return  false or array of primary keys of corresponding records
+function tbldb:search ( query )
+	return self:misc ( "search" , query )
+end
+
+---remove each corresponding record
+--@param query  a query object
+--@return  true or false
+function tbldb:searchout ( query )
+	query [ #query + 1 ] = "out"
+	return not not self:misc ( "search" , query )
+end
+
+local query = setmetatable ( { } , classmt )
+local querymt = { __index = query }
 
 ---initialize a new query object
---'__call' metamethod for RDBQRY
 --@return  new RDBQRY object
-function RDBQRY:new(rdb)
-  self.rdb = rdb
-  self.args = {}
+function query.new ( )
+	return setmetatable ( { } , querymt )
 end
 
-setmetatable(RDBQRY, {__call = RDBQRY.new})
-
+local ops = {
+	STREQ = 0 ;   --string is equal to
+	STRINC = 1 ;  --string is included in
+	STRBW = 2 ;   --string begins with
+	STREW = 3 ;   --string ends with
+	STRAND = 4 ;  --string includes all tokens in
+	STROR = 5 ;   --string includes at least one token in
+	STROREQ = 6 ; --string is equal to at least one token in
+	STRRX = 7 ;   --string matches regular expressions of
+	NUMEQ = 8 ;   --number is equal to
+	NUMGT = 9 ;   --number is greater than
+	NUMGE = 10 ;  --number is greater than or equal to
+	NUMLT = 11 ;  --number is less than
+	NUMLE = 12 ;  --number is less than or equal to
+	NUMBT = 13 ;  --number is between two tokens of
+	NUMOREQ = 14 ;--number is equal to at least one token in
+	FTSPH = 15 ;  --full-text search with the phrase of
+	FTSAND = 16 ; --full-text search with all tokens in
+	FTSOR = 17 ;  --full-text search with at least one token in
+	FTSEX = 18 ;  --f-text search with the compound expression of
+}
 ---add a narrowing condition
---@param name  specifies a column name.
---empty string indicates the primary key.
---@param op  specifies an operation type:
---QCSTREQ = 0,   --string is equal to
---QCSTRINC = 1,  --string is included in
---QCSTRBW = 2,   --string begins with
---QCSTREW = 3,   --string ends with
---QCSTRAND = 4,  --string includes all tokens in
---QCSTROR = 5,   --string includes at least one token in
---QCSTROREQ = 6, --string is equal to at least one token in
---QCSTRRX = 7,   --string matches regular expressions of
---QCNUMEQ = 8,   --number is equal to
---QCNUMGT = 9,   --number is greater than
---QCNUMGE = 10,  --number is greater than or equal to
---QCNUMLT = 11,  --number is less than
---QCNUMLE = 12,  --number is less than or equal to
---QCNUMBT = 13,  --number is between two tokens of
---QCNUMOREQ = 14,--number is equal to at least one token in
---QCFTSPH = 15,  --full-text search with the phrase of
---QCFTSAND = 16, --full-text search with all tokens in
---QCFTSOR = 17,  --full-text search with at least one token in
---QCFTSEX = 18,  --f-text search with the compound expression of
---all ops can be flagged by bitwise-or:
---QCNEGATE = 2^(24-1), --negation flag
---QCNOIDX = 2^(25-1),  --no index flag
---@expr  specifies an operand expression
---@return  nil
-function RDBQRY:addcond(name, op, expr)
-  self.args[#self.args+1]= 'addcond'..'\0'..name..'\0'..tostring(op)..'\0'..expr
-  return nil
+--@param name  specifies column name. empty string indicates the primary key. (default primary key)
+--@param op  operation type:
+--"streq" , "strinc" , "strbw" , "strew" , "strand" , "stror" , "stroreq" , "strrx"
+--"numeq" , "numgt" , "numge" , "numlt" , "numle" , "numbt" , "numoreq"
+--"ftsph" , "ftsand" , "ftsor" , "ftwex"
+--@param expr  specifies an operand expression
+--@param negate boolean: negate the operation
+--@param noindex boolean 
+--@return  self
+function query:addcond ( name , op , expr , negate , noindex )
+	name = assert ( tostring ( name or "" ) , "Invalid column name" )
+	op = assert ( type ( op ) == "string" and ops [ op:upper ( ) ] , "Invalid operation" )
+	if negate then op = op + 2^(24-1) end
+	if noindex then op = op + 2^(25-1) end
+	expr = assert ( tostring ( expr ) , "Invalid expression" )
+	
+	self [ #self + 1 ] = "addcond\0" .. name .. "\0" .. op .. "\0" .. expr
+	return self
 end
 
+local orders = {
+	STRASC = 0 ; --string ascending
+	STRDESC = 1 ; --string descending
+	NUMASC = 2 ; --number ascending
+	NUMDESC = 3 ; --number descending
+}
 ---set result order
---@param name  specifies column name. empty string indicates the primary key.
---@param otype  specifies the order type:
---QOSTRASC = 0, --string ascending
---QOSTRDESC = 1,--string descending
---QONUMASC = 2, --number ascending
---QONUMDESC = 3,--number descending
---@return  nil
-function RDBQRY:setorder(name, otype)
-  self.args[#self.args+1] = 'setorder'..'\0'..name..'\0'..tostring(otype)
-  return nil
+--@param name  specifies column name. empty string indicates the primary key. (default primary key)
+--@param otype  specifies the order type: "strasc" , "strdesc" , "numasc" or "numdesc" (default string ascending)
+--@return  self
+function query:setorder ( name , otype )
+	name = assert ( tostring ( name or "" ) , "Invalid column name" )
+	otype = otype or "STRASC"
+	otype = assert ( type ( otype ) == "string" and orders [ otype:upper ( ) ] , "Invalid sort order type" )
+
+	self [ #self + 1 ] = "setorder\0" .. name .. "\0" .. otype
+	return self
 end
 
 ---set maximum number of records for the result
 --@param max  the maximum number of records. nil or negative means no limit
---@param skip the number of skipped records. nil or !>0 means none skipped
---@return  nil
-function RDBQRY:setlimit(max, skip)
-  local max = max or -1
-  local skip = skip or -1
-  self.args[#self.args]= 'setlimit'..'\0'..tostring(max)..'\0'..tostring(skip)
-  return nil
+--@param skip the number of skipped records. nil or negative means none skipped
+--@return  self
+function query:setlimit ( max , skip )
+	max = assert ( tonumber ( max or -1 ) , "Invalid max" )
+	skip = assert ( tonumber ( skip or -1 ) , "Invalid skip" )
+	
+	self [ #self + 1 ] = "setlimit\0" .. max .. "\0" .. skip
+	return self
 end
 
----execute the search
---@return  array of primary keys of corresponding records
---or {}, error message
-function RDBQRY:search()
-  local res, err = self.rdb:misc('search', self.args)
-  return res or {}, err
-end
 
----remove each corresponding record
---@return true or false, error message
-function RDBQRY:searchout()
-  self.args[#self.args+1] = 'out'
-  local res, err = self.rdb:misc('search', self.args)
-  if res == nil then return false , err end
-  return true
-end
-
----get records corresponding to search
+--[[---get records corresponding to search
 --due to protocol restriction, method cannot handle records with binary cols
 --including the '\0' character
 --@param names  specifies an array of column names to fetch.
@@ -1014,7 +998,7 @@ end
 --nil means fetch every column
 --@return  array of column hashes of corresponding records
 --or {}, error message
-function RDBQRY:searchget(names)
+function RDBQRY:searchget ( rdb , names )
   if type(names) ~= 'table' then
     error("'names' must be an array of column names")
   end
@@ -1022,7 +1006,7 @@ function RDBQRY:searchget(names)
   if #names > 0 then
     args[1] = "get\0" .. tblconcat(names, '\0')
   else args[1] = "get" end
-  local res, err = self.rdb:misc('search', args, "noupdatelog" )
+  local res, err = rdb:misc('search', args, "noupdatelog" )
   if not res then return {}, err end
   for i, v in pairs(res) do
     local cols = {}
@@ -1038,17 +1022,14 @@ function RDBQRY:searchget(names)
 end
 
 ---get the count of corresponding records
---@return  count or 0, error message
-function RDBQRY:searchcount()
-  local res, err = self.rdb:misc('search', {'count'}, "noupdatelog" )
-  if not res then return 0, err end
-  return tonumber(res[1])
-end
+--@return  count or false
+function RDBQRY:searchcount ( rdb )
+	local res = assert ( rdb:misc ( "search" , {'count'} , "noupdatelog" ) )
+	return tonumber ( res [ 1 ] ) or false
+end--]]
 
---------------------------------------------------------------------------------
----Rici Lake's string splitter
---( slightly modified so it doesn't get added to the global string table )--
-local function strsplit(str, pat)
+--[[---Rici Lake's string splitter
+function strsplit(str, pat)
   local st, g = 1, str:gmatch("()("..pat..")")
   local function getter(str, segs, seps, sep, cap1, ...)
     st = sep and seps + #sep
@@ -1058,6 +1039,6 @@ local function strsplit(str, pat)
     if st then return getter(str, st, g()) end
   end
   return splitter, str
-end
+end--]]
 
-return { rdb = rdb , tbldb = tbldb , query = RDBQRY }
+return { rdb = rdb , tbldb = tbldb , query = query }
