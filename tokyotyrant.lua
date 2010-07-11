@@ -907,6 +907,14 @@ function tbldb:searchout ( query )
 	return not not self:misc ( "search" , query )
 end
 
+---get the count of corresponding records
+--@param query  a query object
+--@return  count or false
+function tbldb:searchcount ( query )
+	query [ #query + 1 ] = "count"
+	return self:misc ( "search" , query ) [ 1 ] or false
+end
+
 local query = setmetatable ( { } , classmt )
 local querymt = { __index = query }
 
@@ -1021,12 +1029,7 @@ function RDBQRY:searchget ( rdb , names )
   return res
 end
 
----get the count of corresponding records
---@return  count or false
-function RDBQRY:searchcount ( rdb )
-	local res = assert ( rdb:misc ( "search" , {'count'} , "noupdatelog" ) )
-	return tonumber ( res [ 1 ] ) or false
-end--]]
+--]]
 
 --[[---Rici Lake's string splitter
 function strsplit(str, pat)
